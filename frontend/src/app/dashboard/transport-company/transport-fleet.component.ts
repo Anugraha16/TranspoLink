@@ -135,7 +135,7 @@ import { FleetResponse } from '../../core/models/transport.model';
             <span class="label">Current Status</span>
             <span class="status-pill" [ngClass]="selectedFleet.status.toLowerCase()">{{ selectedFleet.status | titlecase }}</span>
           </div>
-          <div class="update-section">
+          <div class="drawer-item update-section">
             <span class="label">Update Status</span>
             <mat-select class="status-select-lg" placeholder="Change status"
               (selectionChange)="updateFleetStatus(selectedFleet!.fleetId, $event.value)">
@@ -239,8 +239,11 @@ import { FleetResponse } from '../../core/models/transport.model';
     .drawer-item:last-child { border-bottom:none; }
     .label { font-size:11px; color:var(--color-primary); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
     .value { font-size:14px; font-weight:600; color:var(--text-primary); }
-    .update-section { display:flex; flex-direction:column; gap:10px; padding:16px 20px; background:var(--bg-muted); border-top:1px solid var(--border-color); }
-    .status-select-lg { width:100%; font-size:14px; }
+    ::ng-deep .status-select-lg .mat-mdc-select-value,
+    ::ng-deep .status-select-lg .mat-mdc-select-value-text,
+    ::ng-deep .status-select-lg .mat-mdc-select-placeholder,
+    ::ng-deep .status-select-lg .mat-mdc-select-arrow { color: var(--text-primary) !important; }
+    ::ng-deep .status-select-lg .mat-mdc-select-trigger { background: transparent !important; }
 
     /* Empty state */
     .empty-state { display:flex; flex-direction:column; align-items:center; gap:12px; padding:48px; }

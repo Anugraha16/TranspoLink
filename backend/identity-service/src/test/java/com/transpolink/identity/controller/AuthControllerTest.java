@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AuthController.class)
-@Import(SecurityConfig.class) // bring in your custom security config
+@Import(SecurityConfig.class)
 class AuthControllerTest {
 
     @Autowired MockMvc mockMvc;
@@ -32,20 +32,21 @@ class AuthControllerTest {
     @MockBean UserService userService;
 
     @Test
-    void register_returns200() throws Exception {
+    void register_returns201() throws Exception {
         RegisterRequest req = new RegisterRequest();
         req.setName("Alice"); req.setRole(Role.CITIZEN);
         req.setEmail("alice@test.com"); req.setPhone("123"); req.setPassword("pass");
 
-        AuthResponse resp = new AuthResponse("token", "CITIZEN", 1L);
+        RegisterResponse resp = new RegisterResponse(1L, "Alice", "alice@test.com", "ACTIVE",
+                "Registration successful. You can now log in.");
         when(userService.register(any())).thenReturn(resp);
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").value("token"))
-                .andExpect(jsonPath("$.role").value("CITIZEN"));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.userId").value(1))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
     }
 
     @Test
@@ -53,18 +54,20 @@ class AuthControllerTest {
         LoginRequest req = new LoginRequest();
         req.setEmail("alice@test.com"); req.setPassword("pass");
 
-        AuthResponse resp = new AuthResponse("token", "CITIZEN", 1L);
+        AuthResponse resp = new AuthResponse("token", "CITIZEN", 1L, "Alice");
         when(userService.login(any())).thenReturn(resp);
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").value("token"));
+                .andExpect(jsonPath("$.token").value("token"))
+                .andExpect(jsonPath("$.role").value("CITIZEN"))
+                .andExpect(jsonPath("$.name").value("Alice"));
     }
 
     @Test
-    @WithMockUser(username = "test", roles = {"ADMIN"})
+    @WithMockUser(username = "1", roles = {"ADMIN"})
     void getUser_returns200() throws Exception {
         UserResponse resp = UserResponse.builder()
                 .userId(1L).name("Alice").role(Role.CITIZEN)
@@ -78,7 +81,7 @@ class AuthControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "test", roles = {"ADMIN"})
+    @WithMockUser(username = "1", roles = {"ADMIN"})
     void getAllUsers_returns200() throws Exception {
         UserResponse resp = UserResponse.builder()
                 .userId(1L).name("Alice").role(Role.CITIZEN)
@@ -91,7 +94,38 @@ class AuthControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "test", roles = {"ADMIN"})
+    @WithMockUser(username = "1", roles = {"ADMIN"})
+    void approveUser_returns200() throws Exception {
+        ApprovalRequest req = new ApprovalRequest();
+        req.setRole(Role.TRAFFIC_OFFICER);
+
+        UserResponse resp = UserResponse.builder()
+                .userId(1L).name("Alice").role(Role.TRAFFIC_OFFICER)
+                .email("alice@test.com").status(UserStatus.ACTIVE).build();
+        when(userService.approveUser(any(), any())).thenReturn(resp);
+
+        mockMvc.perform(patch("/api/users/1/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("TRAFFIC_OFFICER"));
+    }
+
+    @Test
+    @WithMockUser(username = "1", roles = {"ADMIN"})
+    void rejectUser_returns200() throws Exception {
+        UserResponse resp = UserResponse.builder()
+                .userId(1L).name("Alice").role(Role.CITIZEN)
+                .email("alice@test.com").status(UserStatus.REJECTED).build();
+        when(userService.rejectUser(1L)).thenReturn(resp);
+
+        mockMvc.perform(patch("/api/users/1/reject"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REJECTED"));
+    }
+
+    @Test
+    @WithMockUser(username = "1", roles = {"ADMIN"})
     void deleteUser_returns204() throws Exception {
         doNothing().when(userService).deleteUser(1L);
 

@@ -184,18 +184,21 @@ a { text-decoration: none; color: inherit; }
 }
 
 /* ── Material select panel dark mode fix ───────────────── */
-.mat-mdc-select-panel {
+.mat-mdc-select-panel,
+.mdc-menu-surface.mat-mdc-select-panel {
   background: var(--bg-surface) !important;
   border: 1px solid var(--border-color) !important;
   box-shadow: var(--shadow-md) !important;
 }
 
-.mat-mdc-option {
+.mat-mdc-option,
+.mat-mdc-option .mdc-list-item__primary-text {
   color: var(--text-primary) !important;
 }
 
-.mat-mdc-option:hover,
-.mat-mdc-option.mat-mdc-option-active {
+.mat-mdc-option:hover:not(.mdc-list-item--disabled),
+.mat-mdc-option.mat-mdc-option-active,
+.mat-mdc-option.mdc-list-item--selected:not(.mat-mdc-option-multiple) {
   background: var(--bg-muted) !important;
 }
 

@@ -47,7 +47,7 @@ class UserServiceImplTest {
     }
 
     @Test
-    void register_success() {
+    void register_citizenAutoApproved() {
         RegisterRequest req = new RegisterRequest();
         req.setName("Alice"); req.setRole(Role.CITIZEN);
         req.setEmail("alice@test.com"); req.setPhone("123"); req.setPassword("pass");
@@ -56,14 +56,35 @@ class UserServiceImplTest {
         when(passwordEncoder.encode("pass")).thenReturn("encoded");
         when(userRepository.save(any(User.class))).thenReturn(user);
         when(auditLogRepository.save(any(AuditLog.class))).thenReturn(null);
-        when(jwtUtil.generateToken(eq("1"), any(Map.class))).thenReturn("token123");
 
-        AuthResponse response = userService.register(req);
+        RegisterResponse response = userService.register(req);
 
-        assertThat(response.getToken()).isEqualTo("token123");
-        assertThat(response.getRole()).isEqualTo("CITIZEN");
         assertThat(response.getUserId()).isEqualTo(1L);
+        assertThat(response.getStatus()).isEqualTo("ACTIVE");
+        assertThat(response.getMessage()).contains("log in");
         verify(userRepository).save(any(User.class));
+    }
+
+    @Test
+    void register_nonCitizenStartsPending() {
+        RegisterRequest req = new RegisterRequest();
+        req.setName("Bob"); req.setRole(Role.TRAFFIC_OFFICER);
+        req.setEmail("bob@test.com"); req.setPhone("456"); req.setPassword("pass");
+
+        User pendingUser = User.builder()
+                .userId(2L).name("Bob").role(Role.TRAFFIC_OFFICER)
+                .email("bob@test.com").phone("456")
+                .password("encoded").status(UserStatus.PENDING).build();
+
+        when(userRepository.existsByEmail("bob@test.com")).thenReturn(false);
+        when(passwordEncoder.encode("pass")).thenReturn("encoded");
+        when(userRepository.save(any(User.class))).thenReturn(pendingUser);
+        when(auditLogRepository.save(any(AuditLog.class))).thenReturn(null);
+
+        RegisterResponse response = userService.register(req);
+
+        assertThat(response.getStatus()).isEqualTo("PENDING");
+        assertThat(response.getMessage()).contains("pending");
     }
 
     @Test
@@ -74,6 +95,16 @@ class UserServiceImplTest {
 
         assertThatThrownBy(() -> userService.register(req))
                 .isInstanceOf(UserAlreadyExistsException.class);
+    }
+
+    @Test
+    void register_throwsWhenRoleIsAdmin() {
+        RegisterRequest req = new RegisterRequest();
+        req.setEmail("admin@test.com"); req.setRole(Role.ADMIN);
+        when(userRepository.existsByEmail("admin@test.com")).thenReturn(false);
+
+        assertThatThrownBy(() -> userService.register(req))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -90,6 +121,7 @@ class UserServiceImplTest {
 
         assertThat(response.getToken()).isEqualTo("token123");
         assertThat(response.getUserId()).isEqualTo(1L);
+        assertThat(response.getName()).isEqualTo("Alice");
     }
 
     @Test
@@ -111,6 +143,32 @@ class UserServiceImplTest {
 
         assertThatThrownBy(() -> userService.login(req))
                 .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    void login_throwsWhenPending() {
+        user.setStatus(UserStatus.PENDING);
+        LoginRequest req = new LoginRequest();
+        req.setEmail("alice@test.com"); req.setPassword("pass");
+        when(userRepository.findByEmail("alice@test.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("pass", "encoded")).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.login(req))
+                .isInstanceOf(UserNotFoundException.class)
+                .hasMessageContaining("pending");
+    }
+
+    @Test
+    void login_throwsWhenSuspended() {
+        user.setStatus(UserStatus.SUSPENDED);
+        LoginRequest req = new LoginRequest();
+        req.setEmail("alice@test.com"); req.setPassword("pass");
+        when(userRepository.findByEmail("alice@test.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("pass", "encoded")).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.login(req))
+                .isInstanceOf(UserNotFoundException.class)
+                .hasMessageContaining("suspended");
     }
 
     @Test
@@ -142,10 +200,44 @@ class UserServiceImplTest {
     }
 
     @Test
+    void approveUser_success() {
+        ApprovalRequest req = new ApprovalRequest();
+        req.setRole(Role.TRAFFIC_OFFICER);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(auditLogRepository.save(any(AuditLog.class))).thenReturn(null);
+
+        UserResponse response = userService.approveUser(1L, req);
+
+        assertThat(response).isNotNull();
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    void approveUser_throwsWhenNotFound() {
+        when(userRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.approveUser(99L, new ApprovalRequest()))
+                .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    void rejectUser_success() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(auditLogRepository.save(any(AuditLog.class))).thenReturn(null);
+
+        UserResponse response = userService.rejectUser(1L);
+
+        assertThat(response).isNotNull();
+        verify(userRepository).save(user);
+    }
+
+    @Test
     void updateUser_success() {
-        RegisterRequest req = new RegisterRequest();
-        req.setName("Alice Updated"); req.setRole(Role.ADMIN);
-        req.setEmail("alice@test.com"); req.setPhone("999");
+        ApprovalRequest req = new ApprovalRequest();
+        req.setRole(Role.ADMIN);
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
@@ -160,7 +252,7 @@ class UserServiceImplTest {
     void updateUser_throwsWhenNotFound() {
         when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> userService.updateUser(99L, new RegisterRequest()))
+        assertThatThrownBy(() -> userService.updateUser(99L, new ApprovalRequest()))
                 .isInstanceOf(UserNotFoundException.class);
     }
 
